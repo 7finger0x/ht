@@ -1,0 +1,125 @@
+location: eastus2
+name: hermes-api
+type: Microsoft.App/containerApps
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    REPLACE_WITH_USER_ASSIGNED_IDENTITY_RESOURCE_ID: {}
+tags:
+  hermes.environment: production
+  hermes.workload: api
+  hermes.execution_mode: simulation-only
+properties:
+  managedEnvironmentId: REPLACE_WITH_CONTAINER_APPS_ENVIRONMENT_RESOURCE_ID
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      allowInsecure: false
+      targetPort: 8000
+      traffic:
+        - latestRevision: true
+          weight: 100
+    secrets:
+      - name: database-url
+        value: REPLACE_WITH_DATABASE_URL
+      - name: redis-url
+        value: REPLACE_WITH_REDIS_URL
+      - name: auth-jwt-secret
+        value: REPLACE_WITH_AUTH_JWT_SECRET
+    registries: []
+  template:
+    revisionSuffix: replace-with-release-version
+    containers:
+      - name: hermes-api
+        image: REPLACE_WITH_IMAGE_DIGEST
+        env:
+          - name: HERMES_ENVIRONMENT
+            value: production
+          - name: HERMES_DEPLOYMENT_MODE
+            value: managed
+          - name: HERMES_SERVICE_NAME
+            value: hermes-api
+          - name: HERMES_RELEASE_VERSION
+            value: REPLACE_WITH_RELEASE_VERSION
+          - name: HERMES_SOURCE_COMMIT
+            value: REPLACE_WITH_GIT_SHA
+          - name: HERMES_IMAGE_DIGEST
+            value: REPLACE_WITH_IMAGE_DIGEST
+          - name: HERMES_LIVE_TRADING_ENABLED
+            value: "false"
+          - name: HERMES_API_BIND
+            value: 0.0.0.0:8000
+          - name: HERMES_API_RELOAD
+            value: "false"
+          - name: HERMES_METRICS_ENABLED
+            value: "true"
+          - name: HERMES_OTEL_EXPORTER_OTLP_ENDPOINT
+            value: REPLACE_WITH_OTLP_HTTP_ENDPOINT
+          - name: HERMES_ALLOWED_ORIGINS
+            value: REPLACE_WITH_ALLOWED_ORIGINS
+          - name: HERMES_DATABASE_URL
+            secretRef: database-url
+          - name: HERMES_REDIS_URL
+            secretRef: redis-url
+          - name: HERMES_AUTH_PROVIDER
+            value: privy
+          - name: HERMES_AUTH_ISSUER
+            value: REPLACE_WITH_AUTH_ISSUER
+          - name: HERMES_AUTH_AUDIENCE
+            value: REPLACE_WITH_AUTH_AUDIENCE
+          - name: HERMES_AUTH_JWT_ALGORITHM
+            value: HS256
+          - name: HERMES_AUTH_JWT_SECRET
+            secretRef: auth-jwt-secret
+          - name: HERMES_AUTH_PRINCIPAL_CLAIM
+            value: principal_id
+          - name: HERMES_AUTH_TENANT_CLAIM
+            value: tenant_id
+          - name: HERMES_AUTH_ROLES_CLAIM
+            value: roles
+          - name: HERMES_AUTH_SCOPES_CLAIM
+            value: scope
+          - name: HERMES_PRIVY_APP_ID
+            value: REPLACE_WITH_PRIVY_APP_ID
+          - name: HERMES_PRIVY_VERIFICATION_KEY_REF
+            value: REPLACE_WITH_PRIVY_VERIFICATION_KEY_REF
+          - name: HERMES_AUTH_CLOCK_SKEW_SECONDS
+            value: "30"
+          - name: HERMES_ENABLE_DEV_AUTH_BOOTSTRAP
+            value: "false"
+          - name: HERMES_AI_PROVIDER_KEY_REF
+            value: REPLACE_WITH_AI_PROVIDER_KEY_REF
+          - name: HERMES_MARKET_DATA_KEY_REF
+            value: REPLACE_WITH_MARKET_DATA_KEY_REF
+          - name: HERMES_FRED_KEY_REF
+            value: REPLACE_WITH_FRED_KEY_REF
+          - name: HERMES_RISK_POLICY_PATH
+            value: /app/config/risk-policy.yaml
+          - name: HERMES_VENUE_REGISTRY_PATH
+            value: /app/config/venues.yaml
+          - name: HERMES_AUDIT_ARCHIVE_ENABLED
+            value: "false"
+          - name: HERMES_RAW_MODEL_DIAGNOSTICS_ENABLED
+            value: "false"
+          - name: HERMES_RAW_MODEL_DIAGNOSTICS_MAX_HOURS
+            value: "168"
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /v1/health/live
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /v1/health/ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 15
+    scale:
+      minReplicas: 1
+      maxReplicas: 3

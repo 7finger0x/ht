@@ -16,7 +16,7 @@ for file in "${required_files[@]}"; do
   fi
 done
 
-python - <<'PY'
+python3 - <<'PY'
 from pathlib import Path
 import sys
 

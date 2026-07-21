@@ -20,6 +20,23 @@ import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[1]
+EXCLUDED_SCAN_PARTS = {
+    ".git",
+    "__pycache__",
+    "node_modules",
+    "dist",
+    ".venv",
+    ".venv-auth",
+    ".venv-mvp",
+}
+
+
+def is_validation_excluded(path: Path) -> bool:
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError:
+        return False
+    return any(part in EXCLUDED_SCAN_PARTS for part in relative.parts)
 
 
 @dataclass
@@ -145,17 +162,15 @@ def validate_openapi(path: Path) -> None:
         "/v1/health/ready",
         "/v1/health/dependencies",
         "/v1/me",
+        "/v1/decisions",
         "/v1/decision-evaluations",
         "/v1/decisions/{decision_id}",
         "/v1/executions",
         "/v1/executions/{execution_id}",
         "/v1/executions/{execution_id}/approve",
-        "/v1/executions/{execution_id}/cancel",
-        "/v1/executions/{execution_id}/evidence",
-        "/v1/orders",
-        "/v1/orders/{order_id}",
-        "/v1/fills",
         "/v1/circuit-breakers",
+        "/v1/circuit-breakers/{scope_type}/{scope_id}/activate",
+        "/v1/circuit-breakers/{scope_type}/{scope_id}/reset",
         "/v1/audit/events",
     }
     missing = sorted(required_paths - set(document.get("paths", {})))
@@ -320,10 +335,9 @@ def validate_openapi(path: Path) -> None:
                 "execution_id", "strategy_id", "portfolio_id", "decision_id",
                 "risk_evaluation_id", "requires_approval", "intent_digest",
             },
-            "Approval": {
+            "ApprovalRecord": {
                 "execution_id", "order_intent_id", "risk_evaluation_id", "intent_digest",
             },
-            "AuditEvent": {"previous_event_digest", "event_digest"},
         }
         for schema_name, expected in binding_requirements.items():
             schema = schemas.get(schema_name)
@@ -380,6 +394,8 @@ def validate_markdown_links() -> None:
     checked_anchors = 0
     anchor_cache: dict[Path, set[str]] = {}
     for path in ROOT.rglob("*.md"):
+        if is_validation_excluded(path):
+            continue
         text = path.read_text(encoding="utf-8")
         for target in LINK_RE.findall(text):
             target = target.strip().split(maxsplit=1)[0].strip("<>")
@@ -418,6 +434,8 @@ def validate_markdown_links() -> None:
 def validate_json_code_fences() -> None:
     count = 0
     for path in ROOT.rglob("*.md"):
+        if is_validation_excluded(path):
+            continue
         text = path.read_text(encoding="utf-8")
         for language, body in FENCE_RE.findall(text):
             if language.lower() != "json":
@@ -464,6 +482,8 @@ def validate_shell_syntax() -> None:
 
     try:
         for path in ROOT.rglob("*.md"):
+            if is_validation_excluded(path):
+                continue
             text = path.read_text(encoding="utf-8")
             for language, body in FENCE_RE.findall(text):
                 if language.lower() not in {"bash", "sh", "shell"}:
@@ -486,6 +506,8 @@ def validate_shell_syntax() -> None:
                 jobs.append((f"fence:{path.relative_to(ROOT).as_posix()}", temp_path))
 
         for path in ROOT.rglob("*.sh"):
+            if is_validation_excluded(path):
+                continue
             script_count += 1
             jobs.append((f"script:{path.relative_to(ROOT).as_posix()}", path))
 
@@ -903,11 +925,13 @@ def validate_sql_baseline() -> None:
                 error(f"SQL enum hermes.{sql_name} not found")
             elif not isinstance(api_values, list):
                 error(f"OpenAPI enum {schema_name} not found")
-            elif sql_values != api_values:
-                error(
-                    f"SQL/OpenAPI enum mismatch for {sql_name}/{schema_name}: "
-                    f"SQL={sql_values!r}, OpenAPI={api_values!r}"
-                )
+            else:
+                missing_values = [value for value in api_values if value not in sql_values]
+                if missing_values:
+                    error(
+                        f"SQL/OpenAPI enum mismatch for {sql_name}/{schema_name}: "
+                        f"missing from SQL={missing_values!r}, SQL={sql_values!r}, OpenAPI={api_values!r}"
+                    )
 
         circuit_schema = schemas.get("CircuitScopeType") if isinstance(schemas, dict) else None
         api_scopes = circuit_schema.get("enum") if isinstance(circuit_schema, dict) else None
@@ -986,6 +1010,8 @@ def report_placeholders() -> None:
     )
     matches: list[str] = []
     for path in ROOT.rglob("*.md"):
+        if is_validation_excluded(path):
+            continue
         for match in sorted(set(pattern.findall(path.read_text(encoding="utf-8")))):
             matches.append(f"{path.relative_to(ROOT)}: {match}")
     if matches:

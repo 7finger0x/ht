@@ -11,11 +11,11 @@ This document provides OpenAPI-aligned example API requests for local developmen
 
 ```json
 {
-  "strategy_id": "6252e7a4-0eb9-4ead-bade-ad1c9acb9313",
   "instrument_id": "BTC-USDT",
-  "mode": "SIMULATION",
-  "venue_ids": ["paper-cex"],
-  "client_reference": "research-run-2026-07-20"
+  "strategy_id": "strategy-paper-001",
+  "portfolio_id": "portfolio-paper-001",
+  "market_bias": 0.3,
+  "volatility": 0.3
 }
 ```
 
@@ -33,17 +33,9 @@ The server captures the snapshot. Clients do not post assessments or snapshot ID
 ```json
 {
   "decision_id": "585da6d7-7520-484c-a79c-e1cd1f23c909",
-  "portfolio_id": "312228de-856b-4f0f-91b4-6dde638a0e5e",
-  "venue_id": "paper-cex",
-  "constraints": {
-    "max_quantity": "0.05000000",
-    "max_notional": "5000.00",
-    "limit_price": null,
-    "stop_price": null,
-    "order_type_preference": "MARKET",
-    "time_in_force": "IOC",
-    "client_reference": "allocation-17"
-  }
+  "requested_notional": 5000,
+  "side": "BUY",
+  "venue_id": "paper-venue-001"
 }
 ```
 
@@ -108,7 +100,7 @@ npm install -g @stoplight/prism-cli
 # Start mock server on port 4010
 prism mock openapi/hermes.openapi.yaml --port 4010
 
-# All 20 endpoints will respond with spec-conformant example responses
+# All published endpoints will respond with spec-conformant example responses
 curl -s http://localhost:4010/v1/health/live | jq .
 ```
 

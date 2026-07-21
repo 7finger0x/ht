@@ -8,13 +8,20 @@ steps:
 - checkout: self
 
 - task: UsePythonVersion@0
-  displayName: "Use Python 3.11"
+  displayName: "Use Python 3.13"
   inputs:
-    versionSpec: "3.11"
+    versionSpec: "3.13"
+
+- task: NodeTool@0
+  displayName: "Use Node 22"
+  inputs:
+    versionSpec: "22.x"
 
 - bash: |
     set -euo pipefail
     python --version
+    node --version
+    npm --version
     echo "Repository root:"
     ls -la
   displayName: "Basic sanity check"
@@ -23,11 +30,12 @@ steps:
     set -euo pipefail
     python - <<'PY'
     from pathlib import Path
-    import sys
 
     required = [
         "README.md",
         "azure-pipelines.yml",
+        "services/api/app/main.py",
+        "apps/web/package.json",
     ]
 
     missing = [p for p in required if not Path(p).exists()]
@@ -42,3 +50,21 @@ steps:
     set -euo pipefail
     bash scripts/validate.sh
   displayName: "Run repo validation"
+
+- bash: |
+    set -euo pipefail
+    python -m pip install -r services/api/requirements.txt
+  displayName: "Install backend dependencies"
+
+- bash: |
+    set -euo pipefail
+    export HERMES_DATABASE_URL=sqlite:///./services/api/hermes_mvp_ci.db
+    pytest -q tests/test_mvp_api.py
+  displayName: "Run backend MVP tests"
+
+- bash: |
+    set -euo pipefail
+    cd apps/web
+    npm ci
+    npm run build
+  displayName: "Build frontend MVP"

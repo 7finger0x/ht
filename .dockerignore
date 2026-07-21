@@ -1,0 +1,14 @@
+.git
+.gitignore
+.github
+.venv-auth
+.venv-mvp
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/node_modules
+services/api/hermes_mvp.db
+services/api/test_mvp.db
+infra/docker/*.log
