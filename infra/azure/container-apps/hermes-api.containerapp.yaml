@@ -27,6 +27,8 @@ properties:
         value: REPLACE_WITH_REDIS_URL
       - name: auth-jwt-secret
         value: REPLACE_WITH_AUTH_JWT_SECRET
+      - name: auth-public-key-pem
+        value: REPLACE_WITH_AUTH_PUBLIC_KEY_PEM
     registries: []
   template:
     revisionSuffix: replace-with-release-version
@@ -72,6 +74,8 @@ properties:
             value: HS256
           - name: HERMES_AUTH_JWT_SECRET
             secretRef: auth-jwt-secret
+          - name: HERMES_AUTH_PUBLIC_KEY_PEM
+            secretRef: auth-public-key-pem
           - name: HERMES_AUTH_PRINCIPAL_CLAIM
             value: principal_id
           - name: HERMES_AUTH_TENANT_CLAIM
@@ -82,8 +86,6 @@ properties:
             value: scope
           - name: HERMES_PRIVY_APP_ID
             value: REPLACE_WITH_PRIVY_APP_ID
-          - name: HERMES_PRIVY_VERIFICATION_KEY_REF
-            value: REPLACE_WITH_PRIVY_VERIFICATION_KEY_REF
           - name: HERMES_AUTH_CLOCK_SKEW_SECONDS
             value: "30"
           - name: HERMES_ENABLE_DEV_AUTH_BOOTSTRAP
