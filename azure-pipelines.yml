@@ -1,0 +1,44 @@
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- checkout: self
+
+- task: UsePythonVersion@0
+  displayName: "Use Python 3.11"
+  inputs:
+    versionSpec: "3.11"
+
+- bash: |
+    set -euo pipefail
+    python --version
+    echo "Repository root:"
+    ls -la
+  displayName: "Basic sanity check"
+
+- bash: |
+    set -euo pipefail
+    python - <<'PY'
+    from pathlib import Path
+    import sys
+
+    required = [
+        "README.md",
+        "azure-pipelines.yml",
+    ]
+
+    missing = [p for p in required if not Path(p).exists()]
+    if missing:
+        raise SystemExit("Missing required files: " + ", ".join(missing))
+
+    print("Required files found.")
+    PY
+  displayName: "Check required files"
+
+- bash: |
+    set -euo pipefail
+    bash scripts/validate.sh
+  displayName: "Run repo validation"
