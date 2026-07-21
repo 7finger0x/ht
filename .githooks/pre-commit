@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Hermes pre-commit hook: runs documentation validation and contract tests.
+# Install with: git config core.hooksPath .githooks
+set -euo pipefail
+
+echo '==> Hermes pre-commit: validating documentation package...'
+
+# Resolve the package root from the git repository root
+root=$(git rev-parse --show-toplevel)
+
+# Use the virtualenv python if active, else fall back to the system python
+python_bin="${VIRTUAL_ENV:+$VIRTUAL_ENV/bin/python}"
+python_bin="${python_bin:-python3}"
+
+if ! "$python_bin" -c 'import yaml, jsonschema' 2>/dev/null; then
+  echo 'ERROR: validation dependencies not installed.' >&2
+  echo "Run: python -m pip install -r $root/requirements-docs.txt pytest" >&2
+  exit 1
+fi
+
+"$python_bin" "$root/scripts/validate_package.py"
+"$python_bin" -m pytest -q "$root/tests/test_contracts.py"
+
+echo '==> Hermes pre-commit: all checks passed.'

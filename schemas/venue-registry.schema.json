@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.hermes.invalid/venue-registry.schema.json",
+  "title": "Hermes Venue Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "venues"],
+  "properties": {
+    "version": {"type": "string", "minLength": 1, "maxLength": 100},
+    "venues": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/venue"}
+    }
+  },
+  "$defs": {
+    "decimal": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+    "venue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "venue_id", "name", "type", "status", "environment", "adapter", "adapter_version",
+        "secret_or_signer_ref", "timeout_policy_ref", "rate_limit_policy_ref", "operational_owner_ref",
+        "supported_instruments", "supported_order_types", "limits"
+      ],
+      "properties": {
+        "venue_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 100},
+        "type": {"type": "string", "enum": ["DEX", "CEX"]},
+        "status": {"type": "string", "enum": ["disabled", "sandbox", "enabled", "paused", "degraded"]},
+        "environment": {"type": "string", "enum": ["sandbox", "testnet", "mainnet"]},
+        "network": {"type": ["string", "null"], "maxLength": 100},
+        "chain_id": {"type": ["string", "null"], "maxLength": 100},
+        "adapter": {"type": "string", "minLength": 1, "maxLength": 100},
+        "adapter_version": {"type": "string", "minLength": 1, "maxLength": 100},
+        "secret_or_signer_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+        "timeout_policy_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+        "rate_limit_policy_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+        "operational_owner_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+        "supported_instruments": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Z0-9._:-]{3,100}$"}
+        },
+        "supported_order_types": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "enum": ["MARKET", "LIMIT", "STOP_LIMIT"]}
+        },
+        "contract_allowlist": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 255},
+          "default": []
+        },
+        "recipient_allowlist": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 255},
+          "default": []
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_order_notional", "max_slippage_bps", "max_price_impact_bps", "max_fee_notional_fraction"],
+          "properties": {
+            "max_order_notional": {"$ref": "#/$defs/decimal"},
+            "max_slippage_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+            "max_price_impact_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+            "max_fee_notional_fraction": {"type": "string", "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"},
+            "max_pending_orders": {"type": "integer", "minimum": 1, "maximum": 100000, "default": 10}
+          }
+        },
+        "finality": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "confirmations": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "commitment": {"type": "string", "enum": ["confirmed", "finalized"]}
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {"type": ["string", "number", "integer", "boolean", "null"]}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "DEX"}}},
+          "then": {"required": ["network", "chain_id", "finality"]}
+        }
+      ]
+    }
+  }
+}

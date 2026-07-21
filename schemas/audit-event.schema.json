@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.hermes.invalid/audit-event.schema.json",
+  "title": "Hermes Audit Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_id", "tenant_id", "sequence", "occurred_at", "actor",
+    "action", "result", "resource", "correlation_id", "payload_digest",
+    "previous_event_digest", "event_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "event_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["principal", "service", "signer", "venue", "system"]},
+        "id": {"type": "string", "minLength": 1, "maxLength": 255},
+        "session_id_hash": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "action": {"type": "string", "minLength": 1, "maxLength": 150},
+    "result": {"type": "string", "enum": ["SUCCESS", "DENIED", "FAILED", "PENDING"]},
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1, "maxLength": 100},
+        "id": {"type": "string", "minLength": 1, "maxLength": 255}
+      }
+    },
+    "correlation_id": {"type": "string", "format": "uuid"},
+    "causation_id": {"type": ["string", "null"], "format": "uuid"},
+    "idempotency_key_hash": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"},
+    "payload_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "previous_event_digest": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"},
+    "event_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {"type": "string", "minLength": 1, "maxLength": 300}
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service": {"type": "string", "maxLength": 100},
+        "application_version": {"type": "string", "maxLength": 100},
+        "source_commit": {"type": "string", "pattern": "^[a-f0-9]{7,64}$"},
+        "environment": {"type": "string", "enum": ["development", "staging", "production"]},
+        "region": {"type": ["string", "null"], "maxLength": 100}
+      }
+    }
+  }
+}

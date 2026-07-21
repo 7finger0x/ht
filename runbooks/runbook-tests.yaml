@@ -1,0 +1,103 @@
+version: 1.0.0
+tested_on: "2026-07-20"
+method: automated-static-contract
+limitations:
+  - These tests verify documented control and evidence anchors; they do not execute production systems.
+  - Live tabletop exercises, sandbox drills, and restoration tests remain production release gates.
+cases:
+  - id: RB-SECURITY-INCIDENT
+    runbook: runbooks/incident-security.md
+    scenario: A credential exposure alert indicates possible unauthorized use of a tenant execution credential.
+    required_controls:
+      - deployment-wide emergency stop
+      - revoke
+      - rotate
+      - preserve
+    required_evidence:
+      - audit
+      - timeline
+      - logs
+    expected_result: STATIC_CONTRACT_PASS
+
+  - id: RB-STALE-MARKET-DATA
+    runbook: runbooks/stale-market-data.md
+    scenario: Primary and secondary market sources exceed freshness and divergence thresholds during an active strategy window.
+    required_controls:
+      - pause
+      - stale
+      - circuit breaker
+    required_evidence:
+      - snapshot
+      - timestamps
+      - source
+    expected_result: STATIC_CONTRACT_PASS
+
+  - id: RB-VENUE-OUTAGE
+    runbook: runbooks/venue-outage.md
+    scenario: A configured centralized or decentralized execution venue becomes unavailable during order submission.
+    required_controls:
+      - pause
+      - reconcile
+      - retry
+    required_evidence:
+      - venue
+      - request
+      - response
+    expected_result: STATIC_CONTRACT_PASS
+
+  - id: RB-AMBIGUOUS-ORDER
+    runbook: runbooks/duplicate-or-ambiguous-order.md
+    scenario: An execution request times out after submission and the venue has not returned a definitive order identifier.
+    required_controls:
+      - stop retries
+      - idempotency
+      - reconcile
+    required_evidence:
+      - client order
+      - request
+      - response
+      - state-transition
+    expected_result: STATIC_CONTRACT_PASS
+
+  - id: RB-BLOCKCHAIN-TRANSACTION
+    runbook: runbooks/blockchain-transaction.md
+    scenario: A signed blockchain transaction remains pending beyond the policy deadline or is affected by a reorganization.
+    required_controls:
+      - pause
+      - nonce
+      - replacement
+      - finality
+    required_evidence:
+      - transaction hash
+      - receipt
+      - block
+    expected_result: STATIC_CONTRACT_PASS
+
+  - id: RB-BACKUP-RESTORE
+    runbook: runbooks/backup-restore.md
+    scenario: A restoration exercise must recover the database and evidence objects into an isolated environment.
+    required_controls:
+      - isolated
+      - restore
+      - checksum
+      - reconcile
+    required_evidence:
+      - backup
+      - restore
+      - checksum
+      - recovery
+    expected_result: STATIC_CONTRACT_PASS
+
+  - id: RB-MODEL-CHANGE
+    runbook: runbooks/model-change.md
+    scenario: A provider model, analytical agent, prompt, or parsing change is proposed for a production strategy.
+    required_controls:
+      - simulation
+      - approval
+      - rollback
+      - version
+    required_evidence:
+      - evaluation
+      - version
+      - approval
+    expected_result: STATIC_CONTRACT_PASS

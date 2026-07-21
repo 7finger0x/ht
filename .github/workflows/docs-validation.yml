@@ -1,0 +1,65 @@
+name: Documentation and contract validation
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+env:
+  HERMES_DOCKER_BIN: docker
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install validation dependencies
+        run: python -m pip install -r requirements-docs.txt pytest
+
+      - name: Validate package
+        run: python scripts/validate_package.py
+
+      - name: Run contract tests
+        run: pytest -q tests/test_contracts.py
+
+  postgres-security:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: hermes
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: hermes_test_only
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      HERMES_PG_HOST: 127.0.0.1
+      HERMES_PG_PORT: 5432
+      PGPASSWORD: hermes_test_only
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply core migration
+        run: |
+          psql -h 127.0.0.1 -U postgres -d hermes -v ON_ERROR_STOP=1 \
+            < infra/supabase/migrations/0001_core.sql
+
+      - name: Run PostgreSQL security integration test
+        run: bash scripts/test_postgres_security_ci.sh

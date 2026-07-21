@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "d9168e72-13df-4b29-876f-c8caf825f215",
+  "tenant_id": "76dd04d5-0c4a-4ea8-9cab-43828a5ab5c1",
+  "sequence": 42,
+  "occurred_at": "2026-07-20T18:00:00Z",
+  "actor": {
+    "type": "service",
+    "id": "risk-worker",
+    "session_id_hash": null
+  },
+  "action": "risk.evaluate",
+  "result": "SUCCESS",
+  "resource": {
+    "type": "risk_evaluation",
+    "id": "2b646056-32f7-4c96-8240-eefdd87970ad"
+  },
+  "correlation_id": "1949dfe0-b9fb-472c-ab37-6d6ac0950962",
+  "causation_id": "585da6d7-7520-484c-a79c-e1cd1f23c909",
+  "idempotency_key_hash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "payload_digest": "sha256:1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "previous_event_digest": "sha256:2123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "event_digest": "sha256:3123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "evidence_refs": [
+    "risk_policy:1.0.0-draft",
+    "decision:585da6d7-7520-484c-a79c-e1cd1f23c909"
+  ],
+  "runtime": {
+    "service": "risk-worker",
+    "application_version": "1.0.0-draft",
+    "source_commit": "0123456789abcdef0123456789abcdef01234567",
+    "environment": "staging",
+    "region": "us-west"
+  }
+}

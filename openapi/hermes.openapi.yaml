@@ -1,0 +1,2167 @@
+openapi: 3.1.2
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: Hermes Control API
+  version: 1.0.0-draft
+  summary: Policy-controlled decision, execution, reconciliation, and audit API.
+  description: |
+    The Hermes API separates analytical decisions from deterministic risk authorization
+    and isolated venue execution. Tenant identity is derived from a verified server-side
+    authorization context. Decimal quantities and monetary values are encoded as strings.
+    All mutating operations require an Idempotency-Key header.
+  contact:
+    name: Hermes API Support
+    email: api-support@hermes.invalid
+  license:
+    name: License not yet declared
+servers:
+  - url: https://api.hermes.invalid
+    description: Production placeholder
+  - url: https://api.staging.hermes.invalid
+    description: Staging placeholder
+security:
+  - bearerAuth: []
+tags:
+  - name: Health
+  - name: Identity
+  - name: Venues
+  - name: Decisions
+  - name: Executions
+  - name: Orders
+  - name: Controls
+  - name: Audit
+paths:
+  /v1/health/live:
+    get:
+      tags: [Health]
+      operationId: getLiveness
+      summary: Process liveness check
+      security: []
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /v1/health/ready:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Minimal public readiness check
+      security: []
+      responses:
+        '200':
+          description: The service is ready to accept non-trading requests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/health/dependencies:
+    get:
+      tags: [Health]
+      operationId: getDependencyReadiness
+      summary: Get authenticated dependency readiness detail
+      x-hermes-allowed-roles: [platform_admin]
+      x-hermes-required-scopes: [platform:health:read]
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Required dependency readiness for authorized platform operators.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyReadinessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/me:
+    get:
+      tags: [Identity]
+      operationId: getCurrentPrincipal
+      summary: Get authenticated principal and tenant memberships
+      x-hermes-authorization: authenticated-principal
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Authenticated principal.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/venues:
+    get:
+      tags: [Venues]
+      operationId: listVenues
+      summary: List venue records visible to the selected tenant
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [venues:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/VenueStatus'
+      responses:
+        '200':
+          description: Registered venue records without secret values. Use status to filter the result.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Venue'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/decision-evaluations:
+    post:
+      tags: [Decisions]
+      operationId: createDecisionEvaluation
+      summary: Capture a market snapshot and evaluate analytical consensus
+      x-hermes-allowed-roles: [operator, trader, tenant_admin]
+      x-hermes-required-scopes: [decisions:create]
+      description: |
+        The server captures authoritative data. Clients do not provide raw indicators as
+        authoritative execution inputs. A successful response means evaluation was accepted,
+        not that a trade is approved.
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDecisionEvaluationRequest'
+      responses:
+        '202':
+          description: Evaluation accepted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionEvaluationAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/decisions/{decision_id}:
+    get:
+      tags: [Decisions]
+      operationId: getDecision
+      summary: Get a consensus decision and its explicit metrics
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [decisions:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/DecisionId'
+      responses:
+        '200':
+          description: Decision record.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/executions:
+    post:
+      tags: [Executions]
+      operationId: createExecution
+      summary: Request deterministic risk evaluation and execution
+      x-hermes-allowed-roles: [trader, tenant_admin]
+      x-hermes-required-scopes: [executions:create]
+      description: |
+        The decision determines direction. Client constraints may reduce the permitted action
+        but cannot expand server-side policy. The response is asynchronous and may require
+        human approval.
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExecutionRequest'
+      responses:
+        '202':
+          description: Execution request accepted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Execution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Executions]
+      operationId: listExecutions
+      summary: List tenant executions
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [executions:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ExecutionState'
+        - name: strategy_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: Paginated executions.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/executions/{execution_id}:
+    get:
+      tags: [Executions]
+      operationId: getExecution
+      summary: Get execution lifecycle and risk result
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [executions:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ExecutionId'
+      responses:
+        '200':
+          description: Execution record.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Execution'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/executions/{execution_id}/approve:
+    post:
+      tags: [Executions]
+      operationId: approveExecution
+      summary: Record a decision for the exact current order-intent digest
+      x-hermes-allowed-roles: [approver]
+      x-hermes-required-scopes: [executions:approve]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ExecutionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalRequest'
+      responses:
+        '200':
+          description: Approval or rejection decision recorded.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Execution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/executions/{execution_id}/cancel:
+    post:
+      tags: [Executions]
+      operationId: cancelExecution
+      summary: Request best-effort cancellation
+      x-hermes-allowed-roles: [operator, trader, tenant_admin, security_admin]
+      x-hermes-required-scopes: [executions:cancel]
+      description: Cancellation does not guarantee that a venue order will not fill or a transaction will not confirm.
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ExecutionId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '202':
+          description: Cancellation request accepted or replayed.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Execution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/executions/{execution_id}/evidence:
+    get:
+      tags: [Executions, Audit]
+      operationId: getExecutionEvidence
+      summary: Get evidence manifest for an execution
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [evidence:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ExecutionId'
+      responses:
+        '200':
+          description: Evidence manifest. Sensitive provider payloads and secrets are excluded.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceManifest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: List venue orders and on-chain transaction intents
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [orders:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: execution_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: Paginated orders.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/orders/{order_id}:
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      summary: Get one order and fills
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [orders:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order record.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/fills:
+    get:
+      tags: [Orders]
+      operationId: listFills
+      summary: List reconciled fills
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [orders:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: order_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: Paginated fills.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FillPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/circuit-breakers:
+    get:
+      tags: [Controls]
+      operationId: listCircuitBreakers
+      summary: List circuit-breaker state for the tenant
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [controls:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Current control state.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CircuitBreaker'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/circuit-breakers/{scope_type}/{scope_id}/activate:
+    post:
+      tags: [Controls]
+      operationId: activateCircuitBreaker
+      summary: Activate a circuit breaker
+      x-hermes-allowed-roles: [operator, tenant_admin, security_admin]
+      x-hermes-required-scopes: [controls:activate]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ScopeType'
+        - $ref: '#/components/parameters/ScopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CircuitBreakerChangeRequest'
+      responses:
+        '200':
+          description: Circuit breaker active.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircuitBreaker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/circuit-breakers/{scope_type}/{scope_id}/reset:
+    post:
+      tags: [Controls]
+      operationId: resetCircuitBreaker
+      summary: Reset a circuit breaker after evidence review
+      description: Requires current evidence references and step-up authentication. The deployment-wide emergency stop cannot be reset through this API.
+      x-hermes-allowed-roles: [tenant_admin, security_admin]
+      x-hermes-required-scopes: [controls:reset]
+      x-hermes-step-up-required: true
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ScopeType'
+        - $ref: '#/components/parameters/ScopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CircuitBreakerResetRequest'
+      responses:
+        '200':
+          description: Circuit breaker reset.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircuitBreaker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/audit/events:
+    get:
+      tags: [Audit]
+      operationId: listAuditEvents
+      summary: List tenant audit events
+      description: Sequence is the global ingestion order and may contain gaps within one tenant. Chain order follows previous_event_digest.
+      x-hermes-allowed-roles: [viewer, operator, trader, approver, tenant_admin, security_admin]
+      x-hermes-required-scopes: [audit:read]
+      parameters:
+        - $ref: '#/components/parameters/TenantSelector'
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: correlation_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+            pattern: '^[a-z][a-z0-9._:-]{0,63}$'
+      responses:
+        '200':
+          description: Paginated audit records.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived access token verified by the Hermes API.
+  headers:
+    RequestId:
+      description: Correlation identifier assigned or accepted by the server.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'
+    IdempotencyReplayed:
+      description: True when a mutating response, including a stored error, was replayed from an existing idempotency record. Omitted for non-mutating requests and original results.
+      schema:
+        type: boolean
+  parameters:
+    TenantSelector:
+      name: X-Hermes-Tenant-ID
+      in: header
+      required: false
+      description: |
+        Selects one of the authenticated principal's active tenant memberships. The server
+        verifies membership and derives authorization context; this header is never trusted
+        as proof of ownership. It is required when the principal has multiple active tenants.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Stable key for this mutating request. Reuse with a different canonical body returns 409.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+        pattern: '^[\x21-\x7E]+$'
+    RequestId:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: Optional client correlation ID. The server validates or replaces it.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 512
+        pattern: '^[A-Za-z0-9._~-]{16,512}$'
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    DecisionId:
+      name: decision_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    ExecutionId:
+      name: execution_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    ScopeType:
+      name: scope_type
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/CircuitScopeType'
+    ScopeId:
+      name: scope_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+  responses:
+    BadRequest:
+      description: Request syntax or semantics are invalid.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Idempotency-Replayed:
+          $ref: '#/components/headers/IdempotencyReplayed'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Authentication is missing or invalid.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Idempotency-Replayed:
+          $ref: '#/components/headers/IdempotencyReplayed'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: The principal lacks membership, role, scope, or resource access.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Idempotency-Replayed:
+          $ref: '#/components/headers/IdempotencyReplayed'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource does not exist or is not visible to the tenant.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Idempotency-Replayed:
+          $ref: '#/components/headers/IdempotencyReplayed'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: State conflict, duplicate economic action, or idempotency-key mismatch.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Idempotency-Replayed:
+          $ref: '#/components/headers/IdempotencyReplayed'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnprocessableEntity:
+      description: Schema is valid but the requested operation cannot be accepted.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Idempotency-Replayed:
+          $ref: '#/components/headers/IdempotencyReplayed'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Rate or concurrency limit exceeded.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Idempotency-Replayed:
+          $ref: '#/components/headers/IdempotencyReplayed'
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServiceUnavailable:
+      description: Required dependency or safety state is unavailable.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Idempotency-Replayed:
+          $ref: '#/components/headers/IdempotencyReplayed'
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    Timestamp:
+      type: string
+      format: date-time
+    Digest:
+      type: string
+      pattern: '^sha256:[a-f0-9]{64}$'
+      examples:
+        - sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    Decimal:
+      type: string
+      pattern: '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$'
+      examples: ['0.50000000']
+    NonNegativeDecimal:
+      allOf:
+        - $ref: '#/components/schemas/Decimal'
+        - pattern: '^(0|[1-9][0-9]*)(\.[0-9]+)?$'
+    PositiveDecimal:
+      allOf:
+        - $ref: '#/components/schemas/Decimal'
+        - pattern: '^(?:0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)$'
+    UnitIntervalDecimal:
+      type: string
+      pattern: '^(0(\.[0-9]+)?|1(\.0+)?)$'
+      examples: ['0.8000']
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, time, version]
+      properties:
+        status:
+          const: live
+        time:
+          $ref: '#/components/schemas/Timestamp'
+        version:
+          type: string
+          minLength: 1
+    ReadinessResponse:
+      type: object
+      additionalProperties: false
+      required: [status, time]
+      properties:
+        status:
+          const: ready
+        time:
+          $ref: '#/components/schemas/Timestamp'
+    DependencyReadinessResponse:
+      type: object
+      additionalProperties: false
+      required: [status, time, dependencies]
+      properties:
+        status:
+          type: string
+          enum: [ready, degraded]
+        time:
+          $ref: '#/components/schemas/Timestamp'
+        dependencies:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, status]
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [ready, degraded, unavailable]
+              detail:
+                type: [string, 'null']
+    Role:
+      type: string
+      enum: [viewer, operator, trader, approver, tenant_admin, security_admin, platform_admin]
+    TenantMembership:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, tenant_name, role, scopes, status]
+      properties:
+        tenant_id:
+          $ref: '#/components/schemas/Uuid'
+        tenant_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        role:
+          $ref: '#/components/schemas/Role'
+        scopes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            maxLength: 100
+        status:
+          type: string
+          enum: [active, suspended]
+    MeResponse:
+      type: object
+      additionalProperties: false
+      required: [principal_id, external_subject, memberships]
+      properties:
+        principal_id:
+          $ref: '#/components/schemas/Uuid'
+        external_subject:
+          type: string
+          minLength: 1
+          maxLength: 255
+        display_name:
+          type: [string, 'null']
+          maxLength: 200
+        memberships:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantMembership'
+    VenueType:
+      type: string
+      enum: [DEX, CEX]
+    VenueStatus:
+      type: string
+      enum: [disabled, sandbox, enabled, paused, degraded]
+    Venue:
+      type: object
+      additionalProperties: false
+      required: [venue_id, name, type, status, environment, adapter_version]
+      properties:
+        venue_id:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9._-]{2,63}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          $ref: '#/components/schemas/VenueType'
+        status:
+          $ref: '#/components/schemas/VenueStatus'
+        environment:
+          type: string
+          enum: [sandbox, testnet, mainnet]
+        network:
+          type: [string, 'null']
+          maxLength: 100
+        chain_id:
+          type: [string, 'null']
+          maxLength: 100
+        adapter_version:
+          type: string
+          minLength: 1
+        supported_order_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderType'
+        last_health_at:
+          anyOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+    ExecutionMode:
+      type: string
+      enum: [SIMULATION, LIVE]
+    CreateDecisionEvaluationRequest:
+      type: object
+      additionalProperties: false
+      required: [strategy_id, instrument_id, mode]
+      properties:
+        strategy_id:
+          $ref: '#/components/schemas/Uuid'
+        instrument_id:
+          type: string
+          pattern: '^[A-Z0-9._:-]{3,100}$'
+          examples: [BTC-USDT]
+        mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        venue_ids:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^[a-z0-9][a-z0-9._-]{2,63}$'
+        client_reference:
+          type: [string, 'null']
+          maxLength: 128
+    DecisionEvaluationAccepted:
+      type: object
+      additionalProperties: false
+      required: [evaluation_id, state, created_at]
+      properties:
+        evaluation_id:
+          $ref: '#/components/schemas/Uuid'
+        state:
+          type: string
+          enum: [SNAPSHOT_PENDING, ASSESSMENTS_PENDING, CONSENSUS_PENDING]
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        decision_id:
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+    DecisionAction:
+      type: string
+      enum: [BUY, SELL, HOLD, NO_CONSENSUS]
+    AssessmentAction:
+      type: string
+      enum: [BUY, SELL, HOLD, ABSTAIN]
+    AgentAssessmentSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - assessment_id
+        - agent_id
+        - action
+        - confidence
+        - data_quality
+        - eligible
+      properties:
+        assessment_id:
+          $ref: '#/components/schemas/Uuid'
+        agent_id:
+          type: string
+          minLength: 1
+          maxLength: 100
+        agent_version:
+          type: string
+          minLength: 1
+        provider:
+          type: string
+          maxLength: 100
+        model:
+          type: string
+          maxLength: 200
+        prompt_version:
+          type: [string, 'null']
+          maxLength: 100
+        action:
+          $ref: '#/components/schemas/AssessmentAction'
+        confidence:
+          $ref: '#/components/schemas/UnitIntervalDecimal'
+        data_quality:
+          $ref: '#/components/schemas/UnitIntervalDecimal'
+        eligible:
+          type: boolean
+        exclusion_code:
+          type: [string, 'null']
+          maxLength: 100
+        rationale_summary:
+          type: [string, 'null']
+          maxLength: 2000
+        input_digest:
+          $ref: '#/components/schemas/Digest'
+        output_digest:
+          $ref: '#/components/schemas/Digest'
+    Decision:
+      type: object
+      additionalProperties: false
+      required:
+        - decision_id
+        - evaluation_id
+        - snapshot_id
+        - strategy_id
+        - instrument_id
+        - mode
+        - action
+        - status
+        - metrics
+        - assessments
+        - policy_version
+        - algorithm_version
+        - digest
+        - created_at
+        - valid_until
+      properties:
+        decision_id:
+          $ref: '#/components/schemas/Uuid'
+        evaluation_id:
+          $ref: '#/components/schemas/Uuid'
+        snapshot_id:
+          $ref: '#/components/schemas/Uuid'
+        strategy_id:
+          $ref: '#/components/schemas/Uuid'
+        instrument_id:
+          type: string
+        mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        action:
+          $ref: '#/components/schemas/DecisionAction'
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED, EXPIRED, FAILED]
+        metrics:
+          $ref: '#/components/schemas/ConsensusMetrics'
+        assessments:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentAssessmentSummary'
+        policy_version:
+          type: string
+        algorithm_version:
+          type: string
+        digest:
+          $ref: '#/components/schemas/Digest'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        valid_until:
+          $ref: '#/components/schemas/Timestamp'
+    ConsensusMetrics:
+      type: object
+      additionalProperties: false
+      required:
+        - eligible_agent_count
+        - enabled_agent_count
+        - quorum_weight
+        - support_weight
+        - weighted_confidence
+        - opposition_weight
+        - abstain_weight
+      properties:
+        eligible_agent_count:
+          type: integer
+          minimum: 0
+        enabled_agent_count:
+          type: integer
+          minimum: 1
+        quorum_weight:
+          $ref: '#/components/schemas/UnitIntervalDecimal'
+        support_weight:
+          $ref: '#/components/schemas/UnitIntervalDecimal'
+        weighted_confidence:
+          $ref: '#/components/schemas/UnitIntervalDecimal'
+        opposition_weight:
+          $ref: '#/components/schemas/UnitIntervalDecimal'
+        abstain_weight:
+          $ref: '#/components/schemas/UnitIntervalDecimal'
+    OrderType:
+      type: string
+      enum: [MARKET, LIMIT, STOP_LIMIT]
+    OrderPriceSemantics:
+      oneOf:
+        - properties:
+            order_type: {const: MARKET}
+            limit_price: {type: 'null'}
+            stop_price: {type: 'null'}
+          required: [order_type, limit_price, stop_price]
+        - properties:
+            order_type: {const: LIMIT}
+            limit_price:
+              $ref: '#/components/schemas/PositiveDecimal'
+            stop_price: {type: 'null'}
+          required: [order_type, limit_price, stop_price]
+        - properties:
+            order_type: {const: STOP_LIMIT}
+            limit_price:
+              $ref: '#/components/schemas/PositiveDecimal'
+            stop_price:
+              $ref: '#/components/schemas/PositiveDecimal'
+          required: [order_type, limit_price, stop_price]
+    TimeInForce:
+      type: string
+      enum: [GTC, IOC, FOK, DAY]
+    ExecutionConstraints:
+      type: object
+      additionalProperties: false
+      properties:
+        max_quantity:
+          anyOf:
+            - $ref: '#/components/schemas/NonNegativeDecimal'
+            - type: 'null'
+        max_notional:
+          anyOf:
+            - $ref: '#/components/schemas/NonNegativeDecimal'
+            - type: 'null'
+        limit_price:
+          anyOf:
+            - $ref: '#/components/schemas/PositiveDecimal'
+            - type: 'null'
+        stop_price:
+          anyOf:
+            - $ref: '#/components/schemas/PositiveDecimal'
+            - type: 'null'
+        order_type_preference:
+          anyOf:
+            - $ref: '#/components/schemas/OrderType'
+            - type: 'null'
+        time_in_force:
+          anyOf:
+            - $ref: '#/components/schemas/TimeInForce'
+            - type: 'null'
+        client_reference:
+          type: [string, 'null']
+          maxLength: 128
+      allOf:
+        - if:
+            properties:
+              order_type_preference: {const: MARKET}
+            required: [order_type_preference]
+          then:
+            properties:
+              limit_price: {type: 'null'}
+              stop_price: {type: 'null'}
+        - if:
+            properties:
+              order_type_preference: {const: LIMIT}
+            required: [order_type_preference]
+          then:
+            required: [limit_price]
+            properties:
+              limit_price:
+                $ref: '#/components/schemas/PositiveDecimal'
+              stop_price: {type: 'null'}
+        - if:
+            properties:
+              order_type_preference: {const: STOP_LIMIT}
+            required: [order_type_preference]
+          then:
+            required: [limit_price, stop_price]
+            properties:
+              limit_price:
+                $ref: '#/components/schemas/PositiveDecimal'
+              stop_price:
+                $ref: '#/components/schemas/PositiveDecimal'
+    CreateExecutionRequest:
+      type: object
+      additionalProperties: false
+      required: [decision_id, portfolio_id, venue_id]
+      properties:
+        decision_id:
+          $ref: '#/components/schemas/Uuid'
+        portfolio_id:
+          $ref: '#/components/schemas/Uuid'
+        venue_id:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9._-]{2,63}$'
+        constraints:
+          $ref: '#/components/schemas/ExecutionConstraints'
+    ExecutionState:
+      type: string
+      enum:
+        - CREATED
+        - CONSENSUS_PENDING
+        - CONSENSUS_ACCEPTED
+        - CONSENSUS_REJECTED
+        - RISK_PENDING
+        - RISK_APPROVED
+        - RISK_REJECTED
+        - APPROVAL_PENDING
+        - READY_TO_SUBMIT
+        - SIGNING
+        - SIGNING_FAILED
+        - SUBMITTING
+        - SUBMISSION_AMBIGUOUS
+        - ACKNOWLEDGED
+        - PARTIALLY_FILLED
+        - CONFIRMED
+        - REORGED
+        - FINALIZED
+        - CANCEL_PENDING
+        - FILLED
+        - CANCELLED
+        - EXPIRED
+        - FAILED
+        - RECONCILING
+        - RECONCILIATION_FAILED
+        - RECONCILED
+        - REJECTED
+    RiskRuleResult:
+      type: object
+      additionalProperties: false
+      required: [rule_id, version, status, reason_code, evidence_refs]
+      properties:
+        rule_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        version:
+          type: string
+        status:
+          type: string
+          enum: [PASS, FAIL, UNKNOWN]
+        observed:
+          type: [string, 'null']
+          maxLength: 200
+        limit:
+          type: [string, 'null']
+          maxLength: 200
+        unit:
+          type: [string, 'null']
+          maxLength: 50
+        reason_code:
+          type: string
+          maxLength: 100
+        evidence_refs:
+          type: array
+          items:
+            type: string
+            maxLength: 300
+    RiskEvaluation:
+      type: object
+      additionalProperties: false
+      required:
+        - risk_evaluation_id
+        - status
+        - requires_approval
+        - policy_version
+        - engine_version
+        - rules
+        - digest
+        - created_at
+        - valid_until
+      properties:
+        risk_evaluation_id:
+          $ref: '#/components/schemas/Uuid'
+        status:
+          type: string
+          enum: [PENDING, APPROVED, REJECTED, EXPIRED, FAILED]
+        approved_quantity:
+          anyOf:
+            - $ref: '#/components/schemas/NonNegativeDecimal'
+            - type: 'null'
+        approved_notional:
+          anyOf:
+            - $ref: '#/components/schemas/NonNegativeDecimal'
+            - type: 'null'
+        currency:
+          type: [string, 'null']
+          pattern: '^[A-Z0-9]{2,20}$'
+        requires_approval:
+          type: boolean
+        policy_version:
+          type: string
+        engine_version:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RiskRuleResult'
+        digest:
+          $ref: '#/components/schemas/Digest'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        valid_until:
+          $ref: '#/components/schemas/Timestamp'
+    Approval:
+      type: object
+      additionalProperties: false
+      required:
+        - approval_id
+        - execution_id
+        - order_intent_id
+        - risk_evaluation_id
+        - principal_id
+        - intent_digest
+        - decision
+        - created_at
+        - expires_at
+      properties:
+        approval_id:
+          $ref: '#/components/schemas/Uuid'
+        execution_id:
+          $ref: '#/components/schemas/Uuid'
+        order_intent_id:
+          $ref: '#/components/schemas/Uuid'
+        risk_evaluation_id:
+          $ref: '#/components/schemas/Uuid'
+        principal_id:
+          $ref: '#/components/schemas/Uuid'
+        intent_digest:
+          $ref: '#/components/schemas/Digest'
+        decision:
+          type: string
+          enum: [APPROVED, REJECTED]
+        comment:
+          type: [string, 'null']
+          maxLength: 1000
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+    ApprovalRequest:
+      type: object
+      additionalProperties: false
+      required: [intent_digest, decision]
+      properties:
+        intent_digest:
+          $ref: '#/components/schemas/Digest'
+        decision:
+          type: string
+          enum: [APPROVED, REJECTED]
+        comment:
+          type: [string, 'null']
+          maxLength: 1000
+    CancelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: [string, 'null']
+          maxLength: 500
+    Execution:
+      type: object
+      additionalProperties: false
+      required:
+        - execution_id
+        - decision_id
+        - strategy_id
+        - portfolio_id
+        - venue_id
+        - instrument_id
+        - mode
+        - state
+        - side
+        - created_at
+        - updated_at
+      properties:
+        execution_id:
+          $ref: '#/components/schemas/Uuid'
+        decision_id:
+          $ref: '#/components/schemas/Uuid'
+        strategy_id:
+          $ref: '#/components/schemas/Uuid'
+        portfolio_id:
+          $ref: '#/components/schemas/Uuid'
+        venue_id:
+          type: string
+        instrument_id:
+          type: string
+        mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        state:
+          $ref: '#/components/schemas/ExecutionState'
+        side:
+          type: string
+          enum: [BUY, SELL]
+        risk_evaluation:
+          anyOf:
+            - $ref: '#/components/schemas/RiskEvaluation'
+            - type: 'null'
+        order_intent:
+          anyOf:
+            - $ref: '#/components/schemas/OrderIntent'
+            - type: 'null'
+        approval:
+          anyOf:
+            - $ref: '#/components/schemas/Approval'
+            - type: 'null'
+        order_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/Uuid'
+        failure:
+          anyOf:
+            - $ref: '#/components/schemas/ExecutionFailure'
+            - type: 'null'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+    ExecutionFailure:
+      type: object
+      additionalProperties: false
+      required: [category, code, message, retryable]
+      properties:
+        category:
+          type: string
+          enum:
+            - VALIDATION
+            - AUTHENTICATION
+            - AUTHORIZATION
+            - STALE_STATE
+            - POLICY_REJECTION
+            - TRANSIENT_DEPENDENCY
+            - RATE_LIMIT
+            - AMBIGUOUS_SUBMISSION
+            - PERMANENT_VENUE
+            - SECURITY
+        code:
+          type: string
+          maxLength: 100
+        message:
+          type: string
+          maxLength: 1000
+        retryable:
+          type: boolean
+    OrderIntent:
+      type: object
+      additionalProperties: false
+      required:
+        - order_intent_id
+        - execution_id
+        - strategy_id
+        - portfolio_id
+        - decision_id
+        - risk_evaluation_id
+        - venue_id
+        - instrument_id
+        - account_or_wallet_ref
+        - client_order_id
+        - side
+        - order_type
+        - quantity
+        - limit_price
+        - stop_price
+        - time_in_force
+        - max_slippage_bps
+        - max_price_impact_bps
+        - max_fee
+        - fee_currency
+        - deadline
+        - finality_policy
+        - policy_versions
+        - software_version
+        - requires_approval
+        - intent_digest
+        - expires_at
+      properties:
+        order_intent_id:
+          $ref: '#/components/schemas/Uuid'
+        execution_id:
+          $ref: '#/components/schemas/Uuid'
+        strategy_id:
+          $ref: '#/components/schemas/Uuid'
+        portfolio_id:
+          $ref: '#/components/schemas/Uuid'
+        decision_id:
+          $ref: '#/components/schemas/Uuid'
+        risk_evaluation_id:
+          $ref: '#/components/schemas/Uuid'
+        venue_id:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9._-]{2,63}$'
+        instrument_id:
+          type: string
+          minLength: 1
+          maxLength: 100
+        account_or_wallet_ref:
+          type: string
+          minLength: 1
+          maxLength: 255
+        client_order_id:
+          type: string
+          minLength: 8
+          maxLength: 64
+        side:
+          type: string
+          enum: [BUY, SELL]
+        order_type:
+          $ref: '#/components/schemas/OrderType'
+        quantity:
+          $ref: '#/components/schemas/PositiveDecimal'
+        limit_price:
+          anyOf:
+            - $ref: '#/components/schemas/PositiveDecimal'
+            - type: 'null'
+        stop_price:
+          anyOf:
+            - $ref: '#/components/schemas/PositiveDecimal'
+            - type: 'null'
+        time_in_force:
+          $ref: '#/components/schemas/TimeInForce'
+        max_slippage_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        max_price_impact_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        max_fee:
+          $ref: '#/components/schemas/NonNegativeDecimal'
+        fee_currency:
+          type: string
+          pattern: '^[A-Z0-9._:-]{2,100}$'
+        deadline:
+          $ref: '#/components/schemas/Timestamp'
+        finality_policy:
+          type: string
+          minLength: 1
+          maxLength: 100
+        policy_versions:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: string
+            minLength: 1
+            maxLength: 100
+        software_version:
+          type: string
+          minLength: 1
+          maxLength: 100
+        requires_approval:
+          type: boolean
+        intent_digest:
+          $ref: '#/components/schemas/Digest'
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+      allOf:
+        - $ref: '#/components/schemas/OrderPriceSemantics'
+    OrderStatus:
+      type: string
+      enum:
+        - CREATED
+        - SUBMITTING
+        - ACKNOWLEDGED
+        - OPEN
+        - PARTIALLY_FILLED
+        - FILLED
+        - CANCEL_PENDING
+        - CANCELLED
+        - EXPIRED
+        - REJECTED
+        - FAILED
+        - AMBIGUOUS
+        - CONFIRMED
+        - FINALIZED
+        - REORGED
+    Order:
+      type: object
+      additionalProperties: false
+      required:
+        - order_id
+        - execution_id
+        - venue_id
+        - instrument_id
+        - side
+        - order_type
+        - quantity
+        - limit_price
+        - stop_price
+        - status
+        - client_order_id
+        - created_at
+        - updated_at
+        - fills
+      properties:
+        order_id:
+          $ref: '#/components/schemas/Uuid'
+        execution_id:
+          $ref: '#/components/schemas/Uuid'
+        venue_id:
+          type: string
+        instrument_id:
+          type: string
+        side:
+          type: string
+          enum: [BUY, SELL]
+        order_type:
+          $ref: '#/components/schemas/OrderType'
+        quantity:
+          $ref: '#/components/schemas/PositiveDecimal'
+        limit_price:
+          anyOf:
+            - $ref: '#/components/schemas/PositiveDecimal'
+            - type: 'null'
+        stop_price:
+          anyOf:
+            - $ref: '#/components/schemas/PositiveDecimal'
+            - type: 'null'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        client_order_id:
+          type: string
+        venue_order_id:
+          type: [string, 'null']
+        transaction_hash:
+          type: [string, 'null']
+        submitted_at:
+          anyOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+        fills:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fill'
+      allOf:
+        - $ref: '#/components/schemas/OrderPriceSemantics'
+    Fill:
+      type: object
+      additionalProperties: false
+      required:
+        - fill_id
+        - order_id
+        - venue_fill_id
+        - quantity
+        - price
+        - fee
+        - fee_currency
+        - occurred_at
+        - reconciled
+      properties:
+        fill_id:
+          $ref: '#/components/schemas/Uuid'
+        order_id:
+          $ref: '#/components/schemas/Uuid'
+        venue_fill_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Stable venue event ID; for DEX fills, derive from transaction hash plus deterministic event or instruction index.
+        quantity:
+          $ref: '#/components/schemas/PositiveDecimal'
+        price:
+          $ref: '#/components/schemas/PositiveDecimal'
+        fee:
+          $ref: '#/components/schemas/NonNegativeDecimal'
+        fee_currency:
+          type: string
+          pattern: '^[A-Z0-9]{2,20}$'
+        transaction_hash:
+          type: [string, 'null']
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        reconciled:
+          type: boolean
+    PageMeta:
+      type: object
+      additionalProperties: false
+      required: [next_cursor, page_size]
+      properties:
+        next_cursor:
+          type: [string, 'null']
+          minLength: 16
+          maxLength: 512
+          pattern: '^[A-Za-z0-9._~-]{16,512}$'
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 200
+    ExecutionPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Execution'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+    OrderPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+    FillPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fill'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+    CircuitScopeType:
+      type: string
+      enum: [tenant, strategy, portfolio, venue, account, network, instrument]
+    CircuitBreaker:
+      type: object
+      additionalProperties: false
+      required: [circuit_breaker_id, scope_type, scope_id, state, reason_code, updated_at]
+      properties:
+        circuit_breaker_id:
+          $ref: '#/components/schemas/Uuid'
+        scope_type:
+          $ref: '#/components/schemas/CircuitScopeType'
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+        state:
+          type: string
+          enum: [ACTIVE, RESET]
+        reason_code:
+          type: string
+          maxLength: 100
+        reason:
+          type: [string, 'null']
+          maxLength: 1000
+        activated_by:
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        activated_at:
+          anyOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        reset_by:
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        reset_at:
+          anyOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+    CircuitBreakerChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [reason_code, reason]
+      properties:
+        reason_code:
+          type: string
+          minLength: 1
+          maxLength: 100
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        evidence_refs:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            minLength: 1
+            maxLength: 300
+    CircuitBreakerResetRequest:
+      type: object
+      additionalProperties: false
+      required: [reason_code, reason, evidence_refs]
+      properties:
+        reason_code:
+          type: string
+          minLength: 1
+          maxLength: 100
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        evidence_refs:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 300
+    EvidenceReference:
+      type: object
+      additionalProperties: false
+      required: [kind, id, digest]
+      properties:
+        kind:
+          type: string
+          maxLength: 100
+        id:
+          type: string
+          maxLength: 200
+        digest:
+          $ref: '#/components/schemas/Digest'
+        created_at:
+          anyOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+    EvidenceManifest:
+      type: object
+      additionalProperties: false
+      required:
+        - execution_id
+        - protocol_version
+        - application_version
+        - source_commit
+        - evidence
+        - root_digest
+        - generated_at
+      properties:
+        execution_id:
+          $ref: '#/components/schemas/Uuid'
+        protocol_version:
+          type: string
+        application_version:
+          type: string
+        source_commit:
+          type: string
+          pattern: '^[a-f0-9]{7,64}$'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceReference'
+        root_digest:
+          $ref: '#/components/schemas/Digest'
+        anchored_reference:
+          type: [string, 'null']
+          maxLength: 300
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+    AuditActorType:
+      type: string
+      enum: [principal, service, signer, venue, system]
+    AuditEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event_id
+        - tenant_id
+        - sequence
+        - occurred_at
+        - actor_type
+        - actor_id
+        - action
+        - result
+        - resource_type
+        - resource_id
+        - correlation_id
+        - payload_digest
+        - previous_event_digest
+        - event_digest
+      properties:
+        event_id:
+          $ref: '#/components/schemas/Uuid'
+        tenant_id:
+          $ref: '#/components/schemas/Uuid'
+        sequence:
+          type: integer
+          minimum: 1
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        actor_type:
+          $ref: '#/components/schemas/AuditActorType'
+        actor_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+        action:
+          type: string
+          minLength: 1
+          maxLength: 150
+        result:
+          type: string
+          enum: [SUCCESS, DENIED, FAILED, PENDING]
+        resource_type:
+          type: string
+          maxLength: 100
+        resource_id:
+          type: string
+          maxLength: 255
+        correlation_id:
+          $ref: '#/components/schemas/Uuid'
+        causation_id:
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        idempotency_key_hash:
+          type: [string, 'null']
+          pattern: '^sha256:[a-f0-9]{64}$'
+        payload_digest:
+          $ref: '#/components/schemas/Digest'
+        previous_event_digest:
+          type: [string, 'null']
+          pattern: '^sha256:[a-f0-9]{64}$'
+        event_digest:
+          $ref: '#/components/schemas/Digest'
+        service:
+          type: [string, 'null']
+          maxLength: 100
+        source_commit:
+          type: [string, 'null']
+          pattern: '^[a-f0-9]{7,64}$'
+    AuditEventPage:
+      type: object
+      additionalProperties: false
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, code, detail, request_id]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          maxLength: 200
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type: string
+          pattern: '^[A-Z0-9_]{3,100}$'
+        detail:
+          type: string
+          maxLength: 2000
+        request_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, code, message]
+            properties:
+              field:
+                type: string
+                maxLength: 300
+              code:
+                type: string
+                maxLength: 100
+              message:
+                type: string
+                maxLength: 1000

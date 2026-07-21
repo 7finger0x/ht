@@ -1,0 +1,57 @@
+# Examples are disabled or sandbox-only and do not assert production support.
+version: 1.0.0-draft
+venues:
+  - venue_id: paper-cex
+    name: Paper CEX Simulator
+    type: CEX
+    status: sandbox
+    environment: sandbox
+    network: null
+    chain_id: null
+    adapter: hermes.adapters.paper_cex
+    adapter_version: 1.0.0
+    secret_or_signer_ref: secret://staging/tenants/example/paper-cex
+    timeout_policy_ref: policy://staging/venues/paper-cex/timeouts/v1
+    rate_limit_policy_ref: policy://staging/venues/paper-cex/rate-limits/v1
+    operational_owner_ref: team://venue-operations
+    supported_instruments: [BTC-USDT, ETH-USDT]
+    supported_order_types: [MARKET, LIMIT]
+    contract_allowlist: []
+    recipient_allowlist: []
+    limits:
+      max_order_notional: "1000.00"
+      max_slippage_bps: 30
+      max_price_impact_bps: 25
+      max_fee_notional_fraction: "0.0050"
+      max_pending_orders: 10
+    finality: null
+    metadata:
+      note: Simulation only
+  - venue_id: evm-testnet-router
+    name: Approved EVM Testnet Router
+    type: DEX
+    status: disabled
+    environment: testnet
+    network: evm-testnet
+    chain_id: "11155111"
+    adapter: hermes.adapters.evm_router
+    adapter_version: 1.0.0
+    secret_or_signer_ref: signer://staging/tenants/example/evm-testnet
+    timeout_policy_ref: policy://staging/venues/evm-testnet-router/timeouts/v1
+    rate_limit_policy_ref: policy://staging/venues/evm-testnet-router/rate-limits/v1
+    operational_owner_ref: team://venue-operations
+    supported_instruments: [WETH-USDC]
+    supported_order_types: [MARKET]
+    contract_allowlist:
+      - "0x0000000000000000000000000000000000000001"
+    recipient_allowlist: []
+    limits:
+      max_order_notional: "100.00"
+      max_slippage_bps: 30
+      max_price_impact_bps: 25
+      max_fee_notional_fraction: "0.0100"
+      max_pending_orders: 1
+    finality:
+      confirmations: 12
+    metadata:
+      note: Replace placeholder router only after adapter review

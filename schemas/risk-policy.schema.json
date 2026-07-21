@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.hermes.invalid/risk-policy.schema.json",
+  "title": "Hermes Risk and Consensus Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "mode", "consensus", "risk", "approval", "finality"],
+  "$defs": {
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "nonNegativeDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "unitInterval": {
+      "type": "string",
+      "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"
+    }
+  },
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["SIMULATION", "LIVE"]
+    },
+    "consensus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm_version",
+        "minimum_eligible_agents",
+        "minimum_quorum_weight",
+        "minimum_support_weight",
+        "minimum_weighted_confidence",
+        "maximum_opposition_weight",
+        "maximum_abstain_weight",
+        "maximum_assessment_age_seconds",
+        "agents"
+      ],
+      "properties": {
+        "algorithm_version": {"type": "string", "minLength": 1},
+        "minimum_eligible_agents": {"type": "integer", "minimum": 1, "maximum": 100},
+        "minimum_quorum_weight": {"$ref": "#/$defs/unitInterval"},
+        "minimum_support_weight": {"$ref": "#/$defs/unitInterval"},
+        "minimum_weighted_confidence": {"$ref": "#/$defs/unitInterval"},
+        "maximum_opposition_weight": {"$ref": "#/$defs/unitInterval"},
+        "maximum_abstain_weight": {"$ref": "#/$defs/unitInterval"},
+        "maximum_assessment_age_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "agents": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agent_id", "weight", "minimum_data_quality", "mandatory", "approved_versions"],
+            "properties": {
+              "agent_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,99}$"},
+              "weight": {"$ref": "#/$defs/nonNegativeDecimal"},
+              "minimum_data_quality": {"$ref": "#/$defs/unitInterval"},
+              "mandatory": {"type": "boolean"},
+              "approved_versions": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1, "maxLength": 100}
+              }
+            }
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base_currency",
+        "max_order_notional",
+        "max_order_nav_fraction",
+        "max_position_nav_fraction",
+        "max_gross_exposure_nav_fraction",
+        "max_net_exposure_nav_fraction",
+        "max_leverage",
+        "max_daily_loss_nav_fraction",
+        "max_drawdown_nav_fraction",
+        "max_slippage_bps",
+        "max_price_impact_bps",
+        "min_liquidity_multiple",
+        "max_quote_age_seconds",
+        "max_portfolio_age_seconds",
+        "unknown_rule_result"
+      ],
+      "properties": {
+        "base_currency": {"type": "string", "pattern": "^[A-Z0-9]{2,20}$"},
+        "max_order_notional": {"$ref": "#/$defs/nonNegativeDecimal"},
+        "max_order_nav_fraction": {"$ref": "#/$defs/unitInterval"},
+        "max_position_nav_fraction": {"$ref": "#/$defs/unitInterval"},
+        "max_gross_exposure_nav_fraction": {"$ref": "#/$defs/nonNegativeDecimal"},
+        "max_net_exposure_nav_fraction": {"$ref": "#/$defs/nonNegativeDecimal"},
+        "max_leverage": {"$ref": "#/$defs/nonNegativeDecimal"},
+        "max_daily_loss_nav_fraction": {"$ref": "#/$defs/unitInterval"},
+        "max_drawdown_nav_fraction": {"$ref": "#/$defs/unitInterval"},
+        "max_slippage_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "max_price_impact_bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "min_liquidity_multiple": {"$ref": "#/$defs/nonNegativeDecimal"},
+        "max_quote_age_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "max_portfolio_age_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "max_clock_skew_seconds": {"type": "integer", "minimum": 0, "maximum": 300, "default": 5},
+        "max_fee_notional_fraction": {"$ref": "#/$defs/unitInterval"},
+        "unknown_rule_result": {"const": "REJECT"}
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_above_notional", "dual_control", "expires_after_seconds"],
+      "properties": {
+        "required_above_notional": {"$ref": "#/$defs/nonNegativeDecimal"},
+        "dual_control": {"type": "boolean"},
+        "expires_after_seconds": {"type": "integer", "minimum": 30, "maximum": 86400}
+      }
+    },
+    "finality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evm_confirmations", "solana_commitment", "ambiguous_submission_pause"],
+      "properties": {
+        "evm_confirmations": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "solana_commitment": {"type": "string", "enum": ["confirmed", "finalized"]},
+        "ambiguous_submission_pause": {"type": "boolean", "const": true}
+      }
+    }
+  }
+}

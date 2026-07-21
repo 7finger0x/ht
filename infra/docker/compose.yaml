@@ -1,0 +1,53 @@
+name: hermes-local-support
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: hermes
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: hermes_local_dev_only
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - hermes_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hermes"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - hermes_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: hermes_local_dev_only
+    volumes:
+      - ../supabase/migrations:/migrations:ro
+    command:
+      - sh
+      - -ec
+      - >-
+        psql -h postgres -U postgres -d hermes -v ON_ERROR_STOP=1
+        -f /migrations/0001_core.sql
+    restart: "no"
+
+volumes:
+  hermes_postgres_data:
+  hermes_redis_data:
