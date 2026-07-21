@@ -46,7 +46,7 @@ The reasoning layer cannot submit orders directly. Only a versioned risk policy 
 - [Operational runbooks](runbooks/README.md)
 - [Consolidated whitepaper](docs/Whitepaper.md)
 - [Glossary](docs/Glossary.md)
-- [Contribution guidelines](docs/ContributionGuidelines.md)
+- [Contribution guidelines](CONTRIBUTING.md)
 - [Migration notes from the previous documentation](docs/MigrationNotes.md)
 - [Observability standards](docs/ObservabilityStandards.md)
 - [API mocking examples](docs/api-mocking-collection.md)
