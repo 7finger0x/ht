@@ -22,13 +22,17 @@ properties:
           weight: 100
     secrets:
       - name: database-url
-        value: REPLACE_WITH_DATABASE_URL
+        keyVaultUrl: REPLACE_WITH_DATABASE_URL_SECRET_URI
+        identity: REPLACE_WITH_USER_ASSIGNED_IDENTITY_RESOURCE_ID
       - name: redis-url
-        value: REPLACE_WITH_REDIS_URL
+        keyVaultUrl: REPLACE_WITH_REDIS_URL_SECRET_URI
+        identity: REPLACE_WITH_USER_ASSIGNED_IDENTITY_RESOURCE_ID
       - name: auth-jwt-secret
-        value: REPLACE_WITH_AUTH_JWT_SECRET
+        keyVaultUrl: REPLACE_WITH_AUTH_JWT_SECRET_URI
+        identity: REPLACE_WITH_USER_ASSIGNED_IDENTITY_RESOURCE_ID
       - name: auth-public-key-pem
-        value: REPLACE_WITH_AUTH_PUBLIC_KEY_PEM
+        keyVaultUrl: REPLACE_WITH_AUTH_PUBLIC_KEY_PEM_SECRET_URI
+        identity: REPLACE_WITH_USER_ASSIGNED_IDENTITY_RESOURCE_ID
     registries: []
   template:
     revisionSuffix: replace-with-release-version

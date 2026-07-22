@@ -160,6 +160,8 @@ Examples:
 
 Store these in a runtime secret manager or inject them through workload identity. Scope them by environment and service.
 
+For Azure Container Apps, prefer a user-assigned managed identity with per-secret Key Vault references on `configuration.secrets`. The deployment manifest should reference each secret by `keyVaultUrl` and `identity`, and application environment variables should continue to bind only through `secretRef`. Do not place plaintext production secret values in the manifest.
+
 ### 7.3 Trading authority
 
 Examples:
