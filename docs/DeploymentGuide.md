@@ -160,6 +160,8 @@ Examples:
 
 Store these in a runtime secret manager or inject them through workload identity. Scope them by environment and service.
 
+For Azure Container Apps, prefer a user-assigned managed identity with per-secret Key Vault references on `configuration.secrets`. The deployment manifest should reference each secret by `keyVaultUrl` and `identity`, and application environment variables should continue to bind only through `secretRef`. Do not place plaintext production secret values in the manifest.
+
 ### 7.3 Trading authority
 
 Examples:
@@ -275,7 +277,19 @@ Use separate identities and queues for:
 
 The most privileged execution and credential workloads run with the narrowest egress and secret permissions. At-least-once queue delivery requires idempotent consumers.
 
-### 11.3 Signer
+### 11.3 Observability wiring
+
+Every API and worker deployment must:
+
+- expose Prometheus-format metrics on `/metrics` with authenticated network access controls;
+- configure `HERMES_OTEL_EXPORTER_OTLP_ENDPOINT` to an OTLP/HTTP collector reachable from the workload;
+- scrape `/metrics` from the platform collector or Prometheus-compatible scraper;
+- label dashboards and alerts with the deployed `service.name`, environment, and release version;
+- verify the boot-time deployment live-execution stop is visible through circuit-breaker metrics.
+
+The local compose stack should mirror this with a collector and a Prometheus scrape target so telemetry wiring is tested before deployment.
+
+### 11.4 Signer
 
 The signer is a separate trust boundary. Prefer a customer signer, HSM, MPC, KMS, or wallet-provider policy. It must authenticate the orchestrator, validate the complete signing envelope, enforce independent policy, reject replay/expiry, and return no raw key material.
 

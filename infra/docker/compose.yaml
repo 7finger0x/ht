@@ -1,4 +1,4 @@
-name: hermes-local-support
+name: hermes-local
 services:
   postgres:
     image: postgres:17-alpine
@@ -47,6 +47,105 @@ services:
         psql -h postgres -U postgres -d hermes -v ON_ERROR_STOP=1
         -f /migrations/0001_core.sql
     restart: "no"
+
+  bootstrap_app_login:
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGPASSWORD: hermes_local_dev_only
+      APP_DB_PASSWORD: hermes_app_local_dev_only
+    command:
+      - sh
+      - -ec
+      - >-
+        psql -h postgres -U postgres -d hermes -v ON_ERROR_STOP=1
+        -c "do $$ begin if not exists (select 1 from pg_roles where rolname = 'hermes_app_login') then create role hermes_app_login login inherit nobypassrls password '${APP_DB_PASSWORD}'; else alter role hermes_app_login with login inherit nobypassrls password '${APP_DB_PASSWORD}'; end if; end $$;"
+        -c "grant hermes_api to hermes_app_login;"
+    restart: "no"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: services/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      bootstrap_app_login:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    environment:
+      HERMES_ENVIRONMENT: development
+      HERMES_SERVICE_NAME: hermes-api
+      HERMES_RELEASE_VERSION: local-compose
+      HERMES_LOG_LEVEL: INFO
+      HERMES_LIVE_TRADING_ENABLED: "false"
+      HERMES_API_BIND: 0.0.0.0:8000
+      HERMES_API_RELOAD: "false"
+      HERMES_METRICS_ENABLED: "true"
+      HERMES_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      HERMES_ALLOWED_ORIGINS: http://localhost:5173
+      HERMES_DATABASE_URL: postgresql://hermes_app_login:hermes_app_local_dev_only@postgres:5432/hermes
+      HERMES_REDIS_URL: redis://redis:6379/0
+      HERMES_AUTH_PROVIDER: dev-jwt
+      HERMES_AUTH_ISSUER: hermes-local-dev
+      HERMES_AUTH_AUDIENCE: hermes-local-dev
+      HERMES_AUTH_JWT_ALGORITHM: HS256
+      HERMES_AUTH_JWT_SECRET: hermes_local_dev_jwt_secret
+      HERMES_AUTH_PRINCIPAL_CLAIM: principal_id
+      HERMES_AUTH_TENANT_CLAIM: tenant_id
+      HERMES_AUTH_ROLES_CLAIM: roles
+      HERMES_AUTH_SCOPES_CLAIM: scope
+      HERMES_ENABLE_DEV_AUTH_BOOTSTRAP: "true"
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.107.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4318:4318"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_HERMES_API_ORIGIN: http://localhost:8000
+        VITE_ENABLE_DEV_AUTH_BOOTSTRAP: "true"
+        VITE_RELEASE_VERSION: local-compose
+        VITE_DEPLOYMENT_MODE: managed
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "127.0.0.1:5173:4173"
+    restart: unless-stopped
 
 volumes:
   hermes_postgres_data:

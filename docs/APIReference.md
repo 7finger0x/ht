@@ -2,7 +2,7 @@
 
 **Authoritative contract:** [`openapi/hermes.openapi.yaml`](../openapi/hermes.openapi.yaml)  
 **Version:** 1.0.0-draft  
-**Last revised:** 2026-07-20
+**Last revised:** 2026-07-21
 
 ## 1. Contract rules
 
@@ -33,7 +33,7 @@ Every authenticated tenant operation declares both `x-hermes-allowed-roles` and 
 
 | Surface | Allowed roles | Required scope |
 |---|---|---|
-| Venue, decision, execution, order, fill, evidence, control, and audit reads | Tenant roles listed on the operation | The operation-specific `*:read` scope |
+| Venue, decision, execution, control, and audit reads | Tenant roles listed on the operation | The operation-specific `*:read` scope |
 | Create decision evaluation | `operator`, `trader`, `tenant_admin` | `decisions:create` |
 | Create execution | `trader`, `tenant_admin` | `executions:create` |
 | Record approval decision | `approver` | `executions:approve` |
@@ -46,7 +46,7 @@ Every authenticated tenant operation declares both `x-hermes-allowed-roles` and 
 
 ### 2.2 Health surfaces
 
-`GET /v1/health/live` and `GET /v1/health/ready` are public, minimal probes. They expose only process or aggregate readiness state and time/version fields. Named dependency status is available only through authenticated `GET /v1/health/dependencies` to the platform-health role and scope.
+`GET /v1/health/live` is a public liveness probe that returns process status plus `service`, `environment`, `version`, and `request_id`. `GET /v1/health/ready` is a public readiness probe that returns aggregate readiness plus `mode`, `live_trading_enabled`, `auth_provider`, `version`, and `time`. Named dependency status is available only through authenticated `GET /v1/health/dependencies` to the platform-health role and scope.
 
 ## 3. Tenant selection
 
@@ -117,11 +117,11 @@ Content-Type: application/json
 
 ```json
 {
-  "strategy_id": "6252e7a4-0eb9-4ead-bade-ad1c9acb9313",
   "instrument_id": "BTC-USDT",
-  "mode": "SIMULATION",
-  "venue_ids": ["paper-cex"],
-  "client_reference": "research-run-2026-07-20"
+  "strategy_id": "strategy-paper-001",
+  "portfolio_id": "portfolio-paper-001",
+  "market_bias": 0.3,
+  "volatility": 0.3
 }
 ```
 
@@ -129,19 +129,7 @@ The server captures the snapshot. Clients do not post RSI, ATR, headlines, or ot
 
 ### 6.2 Read the decision
 
-```http
-GET /v1/decisions/{decision_id}
-```
-
-The response separates:
-
-- `quorum_weight`;
-- `support_weight`;
-- `weighted_confidence`;
-- `opposition_weight`;
-- `abstain_weight`.
-
-No single field is described as the probability that a trade will succeed.
+The current MVP exposes both `GET /v1/decisions` and `GET /v1/decisions/{decision_id}`. Both surfaces return the live `DecisionRecord` shape with `snapshot`, `assessments`, consensus weights, and the persisted decision digest.
 
 ### 6.3 Request execution
 
@@ -154,21 +142,13 @@ Content-Type: application/json
 ```json
 {
   "decision_id": "585da6d7-7520-484c-a79c-e1cd1f23c909",
-  "portfolio_id": "312228de-856b-4f0f-91b4-6dde638a0e5e",
-  "venue_id": "paper-cex",
-  "constraints": {
-    "max_quantity": "0.05000000",
-    "max_notional": "5000.00",
-    "limit_price": null,
-    "stop_price": null,
-    "order_type_preference": "MARKET",
-    "time_in_force": "IOC",
-    "client_reference": "allocation-17"
-  }
+  "requested_notional": 5000,
+  "side": "BUY",
+  "venue_id": "paper-venue-001"
 }
 ```
 
-The server derives side from the accepted decision and may reduce quantity. The deterministic risk evaluation is returned as the workflow advances.
+The server accepts the requested notional, uses the provided side when present, and defaults `venue_id` when omitted. Deterministic risk evaluation is returned as the workflow advances.
 
 ### 6.4 Approve an execution
 
@@ -182,41 +162,46 @@ An approval binds to the exact current intent digest:
 }
 ```
 
-Before posting approval, the client retrieves the current execution and displays every approval-relevant `order_intent` field together with its digest. The intent binds `execution_id`, `strategy_id`, `portfolio_id`, `decision_id`, `risk_evaluation_id`, venue/account, economic constraints, policy/software versions, approval requirement, expiry, and digest. It must not ask an approver to authorize a digest received only out of band. The server accepts a decision only in `APPROVAL_PENDING` and only when the supplied digest matches the current immutable intent. The resulting approval record repeats the execution, order-intent, and risk-evaluation identifiers so the binding is independently inspectable.
+Before posting approval, retrieve the current execution and use its current `intent_digest`. The server accepts a decision only in `APPROVAL_PENDING` and only when the supplied digest matches the current immutable intent. The resulting approval record repeats the execution, order-intent, and risk-evaluation identifiers so the binding is independently inspectable.
 
-Any economic change invalidates approval.
+### 6.5 Executions and circuit breakers
 
-### 6.5 Cancel
+`GET /v1/executions` returns an array of execution records. `GET /v1/executions/{execution_id}` and `POST /v1/executions/{execution_id}/approve` return a single execution record.
 
-`POST /v1/executions/{execution_id}/cancel` requests best-effort cancellation. It cannot guarantee that a CEX order will not fill or an on-chain transaction will not confirm. The execution remains subject to reconciliation.
-
-### 6.6 Orders, fills, and circuit breakers
-
-Every fill includes a non-null `venue_fill_id`. CEX adapters use the exchange fill/trade identifier. DEX adapters derive a stable value from the transaction hash and deterministic event or instruction index. The database enforces uniqueness per venue order so repeated delivery cannot create duplicate fill records.
-
-Circuit-breaker endpoints manage tenant-local scopes only: tenant, strategy, portfolio, venue, account, network, and instrument. Reset requires at least one current evidence reference plus step-up authentication; role and scope alone do not authorize it. The deployment-wide emergency stop is an out-of-band operator control and is intentionally absent from the tenant API and cannot be reset through it.
+Circuit-breaker endpoints manage tenant-local scopes only: tenant, strategy, portfolio, venue, account, network, and instrument. Activate requires `reason_code` and `reason`, with optional `evidence_refs`. Reset requires `reason_code`, `reason`, and at least one `evidence_refs` item. `GET /v1/circuit-breakers` returns an `AcceptedResponse` wrapper whose `data` array contains `CircuitBreakerRecord` items. The deployment-wide emergency stop is an out-of-band operator control and is intentionally absent from the tenant API and cannot be reset through it.
 
 ## 7. Execution states
 
-The exact enum is in OpenAPI and the transition table is in [Execution Protocol](ExecutionProtocol.md#11-order-and-execution-state-machine). Important states include:
+The exact enum is in OpenAPI. The current MVP execution states are:
 
-- `RISK_REJECTED` — no venue action is permitted;
-- `APPROVAL_PENDING` — exact intent awaits an authorized approver;
-- `SUBMISSION_AMBIGUOUS` — venue state is uncertain; conflicting retry is blocked;
-- `PARTIALLY_FILLED` — remaining quantity may still fill or be cancelled;
-- `REORGED` — observed on-chain inclusion was removed;
-- `RECONCILIATION_FAILED` — internal and authoritative state differ; affected scope is paused;
-- `RECONCILED` — authoritative fills, fees, receipts, and balances agree with internal state.
+- `CREATED`;
+- `RISK_APPROVED`;
+- `RISK_REJECTED`;
+- `APPROVAL_PENDING`;
+- `READY_TO_SUBMIT`;
+- `SIGNING`;
+- `SIGNING_FAILED`;
+- `SUBMITTING`;
+- `SUBMISSION_AMBIGUOUS`;
+- `ACKNOWLEDGED`;
+- `FILLED`;
+- `RECONCILING`;
+- `RECONCILIATION_FAILED`;
+- `RECONCILED`;
+- `REJECTED`;
+- `FAILED`.
 
-## 8. Pagination
+## 8. Collection responses
 
-Collection endpoints use opaque cursor pagination:
+The current MVP list endpoints return JSON arrays directly:
 
 ```http
-GET /v1/executions?page_size=50&cursor=<opaque-cursor>
+GET /v1/decisions
+GET /v1/executions
+GET /v1/audit/events
 ```
 
-Clients must not parse or construct cursors. A response contains `page.next_cursor`, which is `null` at the end.
+`GET /v1/circuit-breakers` is the exception: it returns an `AcceptedResponse` object whose `data` field contains the array of circuit-breaker records.
 
 ## 9. Rate and concurrency limits
 
@@ -229,17 +214,11 @@ Limits are deployment- and endpoint-specific. The server may constrain:
 
 A `429` response includes `Retry-After`. Trading clients must still respect decision, quote, approval, and intent expiry; retrying after expiry requires a new evaluation.
 
-## 10. Evidence
+## 10. Audit read model
 
-`GET /v1/executions/{execution_id}/evidence` returns a manifest of identifiers and content digests for the snapshot, assessments, consensus, risk, approval, signing, venue, fill, reconciliation, policy, and code evidence. It excludes secret values and routine raw model payloads.
+`GET /v1/audit/events` is tenant-filtered and read-only. It returns an array of `AuditEvent` objects with `id`, `occurred_at`, `action`, `result`, `resource_type`, `resource_id`, `correlation_id`, and an opaque `payload` object. Application roles cannot insert, update, or delete audit rows directly; audited services append through the serialized database function described in the data and security contracts.
 
-A root digest is tamper evidence, not proof of profitability, completeness, regulatory compliance, or zero-knowledge verification.
-
-## 11. Audit read model
-
-`GET /v1/audit/events` is tenant-filtered and read-only. Application roles cannot insert, update, or delete audit rows directly; audited services append through the serialized database function described in the data and security contracts.
-
-The API `sequence` is global ingestion order, so a tenant-filtered page may contain sequence gaps. Chain verification follows the required `previous_event_digest`, which is `null` only for the first event in the chain, and recomputes each `event_digest`. Pagination order alone is not chain evidence.
+The live MVP surface does not currently expose sequence counters or digest-chain fields on the API response, so consumers should treat `payload` as the detailed event envelope and use server-side evidence workflows for deeper chain verification.
 
 ## 12. Compatibility policy
 

@@ -85,6 +85,18 @@ api_tenant_count=$("$docker_bin" exec -e PGPASSWORD=api_test_only "$container_na
   | tail -n 1)
 [[ "$api_tenant_count" == '1' ]]
 
+strategy_visibility=$("$docker_bin" exec -e PGPASSWORD=api_test_only "$container_name" \
+  psql -h 127.0.0.1 -U hermes_api_login -d hermes -Atqc \
+  "begin; set local app.tenant_id = '20000000-0000-0000-0000-000000000001'; set local app.principal_id = '10000000-0000-0000-0000-000000000001'; select count(*) from hermes.strategies; commit;" \
+  | tail -n 1)
+[[ "$strategy_visibility" == '1' ]]
+
+cross_tenant_strategy_visibility=$("$docker_bin" exec -e PGPASSWORD=api_test_only "$container_name" \
+  psql -h 127.0.0.1 -U hermes_api_login -d hermes -Atqc \
+  "begin; set local app.tenant_id = '20000000-0000-0000-0000-000000000002'; set local app.principal_id = '10000000-0000-0000-0000-000000000002'; select count(*) from hermes.strategies; commit;" \
+  | tail -n 1)
+[[ "$cross_tenant_strategy_visibility" == '0' ]]
+
 absent_context_count=$("$docker_bin" exec -e PGPASSWORD=api_test_only "$container_name" \
   psql -h 127.0.0.1 -U hermes_api_login -d hermes -Atqc \
   'select count(*) from hermes.tenants')

@@ -1,0 +1,51 @@
+version: 1
+profile:
+  name: production-live-prep
+  deployment_mode: managed
+  environment: production
+  execution:
+    live_trading_enabled: false
+    signer_live_enabled: false
+  authority:
+    on_chain: customer-managed-signer
+    cex: disabled
+  identity:
+    provider: privy
+  support_access:
+    approvals_required: true
+    time_bound: true
+    audit_required: true
+  recovery_targets:
+    database:
+      rpo: 15m
+      rto: 4h
+    queue:
+      rpo: 15m
+    audit_archive:
+      rpo: 5m
+workloads:
+  - name: hermes-web
+    runtime: vercel
+    path: apps/web
+    status: ready
+    public_env:
+      - VITE_HERMES_API_ORIGIN
+      - VITE_PRIVY_APP_ID
+      - VITE_RELEASE_VERSION
+      - VITE_DEPLOYMENT_MODE
+      - VITE_ENABLE_DEV_AUTH_BOOTSTRAP
+      - VITE_ENABLE_OPTIONAL_ANALYTICS
+      - VITE_SUPPORT_URL
+  - name: hermes-api
+    runtime: azure-container-apps
+    path: services/api
+    status: ready
+    manifest: infra/azure/container-apps/hermes-api.containerapp.yaml
+  - name: hermes-worker
+    runtime: azure-container-apps
+    status: blocked
+    reason: No dedicated worker runtime exists under services/worker and services/api/app/worker.py is library logic only.
+  - name: hermes-signer
+    runtime: isolated-signer-boundary
+    status: blocked
+    reason: No signer service or adapter exists under services/signer; keep HERMES_SIGNER_LIVE_ENABLED=false until an isolated runtime exists.

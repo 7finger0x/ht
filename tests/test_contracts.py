@@ -59,4 +59,4 @@ def test_approval_artifacts_require_cross_record_bindings() -> None:
     } <= set(schemas["OrderIntent"]["required"])
     assert {
         "execution_id", "order_intent_id", "risk_evaluation_id", "intent_digest",
-    } <= set(schemas["Approval"]["required"])
+    } <= set(schemas["ApprovalRecord"]["required"])

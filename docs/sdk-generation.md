@@ -1,7 +1,7 @@
 # Hermes SDK Generation Guide
 
 **Status:** Reference  
-**Last revised:** 2026-07-20
+**Last revised:** 2026-07-21
 
 This guide explains how to generate strictly typed client SDKs for TypeScript and Python directly from the [Hermes OpenAPI 3.1.2 specification](../openapi/hermes.openapi.yaml).
 
@@ -49,11 +49,10 @@ const { data: exec } = await createExecution({
   client,
   headers: { 'Idempotency-Key': crypto.randomUUID() },
   body: {
-    strategy_id: '<uuid>',
-    decision_id: '<uuid>',
-    portfolio_id: '<uuid>',
-    venue_id: '<uuid>',
-    mode: 'SIMULATION',
+    decision_id: '<decision-id>',
+    requested_notional: 5000,
+    side: 'BUY',
+    venue_id: 'paper-venue-001',
   },
 });
 ```

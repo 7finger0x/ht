@@ -50,6 +50,19 @@ api_tenant_count=$(PGPASSWORD=api_test_only psql -h "$PG_HOST" -p "$PG_PORT" \
   2>/dev/null | tail -n 1)
 [[ "$api_tenant_count" == '1' ]]
 
+# RLS: seeded strategy is visible only inside the owning tenant context
+strategy_visibility=$(PGPASSWORD=api_test_only psql -h "$PG_HOST" -p "$PG_PORT" \
+  -U hermes_api_login -d hermes -Atqc \
+  "begin; set local app.tenant_id = '20000000-0000-0000-0000-000000000001'; set local app.principal_id = '10000000-0000-0000-0000-000000000001'; select count(*) from hermes.strategies; commit;" \
+  2>/dev/null | tail -n 1)
+[[ "$strategy_visibility" == '1' ]]
+
+cross_tenant_strategy_visibility=$(PGPASSWORD=api_test_only psql -h "$PG_HOST" -p "$PG_PORT" \
+  -U hermes_api_login -d hermes -Atqc \
+  "begin; set local app.tenant_id = '20000000-0000-0000-0000-000000000002'; set local app.principal_id = '10000000-0000-0000-0000-000000000002'; select count(*) from hermes.strategies; commit;" \
+  2>/dev/null | tail -n 1)
+[[ "$cross_tenant_strategy_visibility" == '0' ]]
+
 # RLS: absent context yields zero rows
 absent_context_count=$(PGPASSWORD=api_test_only psql -h "$PG_HOST" -p "$PG_PORT" \
   -U hermes_api_login -d hermes -Atqc \

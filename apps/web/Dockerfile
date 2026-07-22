@@ -1,0 +1,22 @@
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci
+
+COPY apps/web /app
+
+ARG VITE_HERMES_API_ORIGIN=http://localhost:8000
+ARG VITE_ENABLE_DEV_AUTH_BOOTSTRAP=true
+ARG VITE_RELEASE_VERSION=development
+ARG VITE_DEPLOYMENT_MODE=managed
+ENV VITE_HERMES_API_ORIGIN=${VITE_HERMES_API_ORIGIN} \
+    VITE_ENABLE_DEV_AUTH_BOOTSTRAP=${VITE_ENABLE_DEV_AUTH_BOOTSTRAP} \
+    VITE_RELEASE_VERSION=${VITE_RELEASE_VERSION} \
+    VITE_DEPLOYMENT_MODE=${VITE_DEPLOYMENT_MODE}
+RUN npm run build
+
+EXPOSE 4173
+
+CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "4173"]
